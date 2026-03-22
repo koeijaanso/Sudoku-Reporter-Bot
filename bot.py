@@ -58,7 +58,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "  `БАГ: описание проблемы`\n"
         "  `УЛУЧШЕНИЕ: твоя идея`\n\n"
         "📌 Все отчёты отправляются разработчику автоматически.\n"
-        "Спасибо за помощь в улучшении проекта! 🚀"
+        "Спасибо за помощь в улучшении проекта! 🚀\n"
+        "  `Ссылка для скачивания: https://drive.google.com/file/d/1_rPmdG-Dna21I24xAGwEJ-SE60jhUs5c/view?usp=sharing`"
+
     )
     
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
