@@ -212,4 +212,7 @@ def main():
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
+    import asyncio
+    # Небольшая задержка, чтобы избежать конфликта при запуске
+    asyncio.get_event_loop().run_until_complete(asyncio.sleep(3))
     main()
