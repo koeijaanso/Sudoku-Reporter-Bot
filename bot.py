@@ -3,8 +3,9 @@ import logging
 import sys
 import os
 from datetime import datetime
+import asyncio
 
-from telegram import Update
+from telegram import Update, InputFile
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 # Настройка логирования
@@ -23,6 +24,9 @@ YOUR_CHAT_ID = 837102027
 
 # Папка для сохранения отчётов (будет создана автоматически)
 REPORTS_FILE = "reports.txt"
+
+# Файл для хранения пользователей (для рассылок)
+USERS_FILE = "users.txt"
 # ================================
 
 def save_report(user_id: int, username: str, full_name: str, text: str):
@@ -45,6 +49,20 @@ def save_report(user_id: int, username: str, full_name: str, text: str):
     
     logger.info(f"Сохранён отчёт от {username} ({user_id})")
 
+def save_user(user_id: int):
+    """Сохраняет ID пользователя для будущих рассылок"""
+    users = set()
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "r", encoding="utf-8") as f:
+            users = set(int(line.strip()) for line in f if line.strip())
+    
+    if user_id not in users:
+        users.add(user_id)
+        with open(USERS_FILE, "w", encoding="utf-8") as f:
+            for uid in users:
+                f.write(f"{uid}\n")
+        logger.info(f"Добавлен новый пользователь: {user_id}")
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Приветственное сообщение"""
     user = update.effective_user
@@ -62,11 +80,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
+    
+    # Сохраняем пользователя
+    save_user(user.id)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка сообщений (все пользователи могут писать)"""
     user = update.effective_user
     text = update.message.text
+    
+    # Сохраняем пользователя
+    save_user(user.id)
     
     # Сохраняем отчёт локально
     save_report(
@@ -114,6 +138,90 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
+# ========== НОВЫЕ ФУНКЦИИ ==========
+
+async def send_file_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отправляет файл отчётов (только для разработчика)"""
+    user = update.effective_user
+    
+    if user.id != YOUR_CHAT_ID:
+        await update.message.reply_text("⛔ У вас нет прав на эту команду.")
+        return
+    
+    if not os.path.exists(REPORTS_FILE):
+        await update.message.reply_text("📭 Файл с отчётами не найден.")
+        return
+    
+    try:
+        with open(REPORTS_FILE, "rb") as f:
+            await update.message.reply_document(
+                document=InputFile(f, filename="reports.txt"),
+                caption=f"📋 Все отчёты\nДата: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            )
+        logger.info("Файл reports.txt отправлен разработчику")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка при отправке файла: {e}")
+        logger.error(f"Ошибка отправки файла: {e}")
+
+async def new_version(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Сообщение о новой версии игры (только для разработчика)"""
+    user = update.effective_user
+    
+    if user.id != YOUR_CHAT_ID:
+        await update.message.reply_text("⛔ У вас нет прав на эту команду.")
+        return
+    
+    # Получаем текст версии (если указан)
+    version_text = " ".join(context.args)
+    if not version_text:
+        version_text = "Вышла новая версия игры Sudoku!"
+    
+    # Сообщение для рассылки
+    message = (
+        f"🎉 **{version_text}** 🎉\n\n"
+        f"📥 **Скачать новую версию:**\n"
+        f"`https://drive.google.com/file/d/1_rPmdG-Dna21I24xAGwEJ-SE60jhUs5c/view?usp=sharing`\n\n"
+        f"Спасибо, что помогаете делать игру лучше! 🙏\n"
+        f"Если найдуте баги или есть идеи — пишите в этот бот!"
+    )
+    
+    # Проверяем, есть ли сохранённые пользователи
+    if not os.path.exists(USERS_FILE):
+        await update.message.reply_text("📭 Нет сохранённых пользователей для рассылки.")
+        return
+    
+    with open(USERS_FILE, "r", encoding="utf-8") as f:
+        users = [int(line.strip()) for line in f if line.strip()]
+    
+    if not users:
+        await update.message.reply_text("📭 Нет сохранённых пользователей.")
+        return
+    
+    await update.message.reply_text(f"🚀 Начинаю оповещение {len(users)} пользователей о новой версии...")
+    
+    success = 0
+    fail = 0
+    
+    for user_id in users:
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=message,
+                parse_mode='Markdown'
+            )
+            success += 1
+            await asyncio.sleep(0.05)  # Небольшая задержка, чтобы не спамить
+        except Exception as e:
+            fail += 1
+            logger.error(f"Не удалось отправить пользователю {user_id}: {e}")
+    
+    await update.message.reply_text(
+        f"✅ **Оповещение о новой версии завершено!**\n\n"
+        f"📤 Успешно: {success}\n"
+        f"❌ Ошибок: {fail}",
+        parse_mode='Markdown'
+    )
+
 async def reports_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда для просмотра всех отчётов (только для разработчика)"""
     user = update.effective_user
@@ -151,21 +259,25 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ У вас нет прав.")
         return
     
-    if not os.path.exists(REPORTS_FILE):
-        await update.message.reply_text("Нет отчётов")
-        return
+    # Статистика по отчётам
+    report_count = 0
+    file_size = 0
+    if os.path.exists(REPORTS_FILE):
+        with open(REPORTS_FILE, "r", encoding="utf-8") as f:
+            content = f.read()
+            report_count = content.count("[20")
+        file_size = os.path.getsize(REPORTS_FILE) / 1024
     
-    # Подсчитываем количество отчётов
-    with open(REPORTS_FILE, "r", encoding="utf-8") as f:
-        content = f.read()
-        report_count = content.count("[20")  # Примерное количество (по датам)
-    
-    # Размер файла
-    file_size = os.path.getsize(REPORTS_FILE) / 1024  # в КБ
+    # Статистика по пользователям
+    users_count = 0
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "r", encoding="utf-8") as f:
+            users_count = len([line for line in f if line.strip()])
     
     stats_text = (
         f"📊 **Статистика:**\n\n"
         f"📝 Всего отчётов: ~{report_count}\n"
+        f"👥 Всего пользователей: {users_count}\n"
         f"💾 Размер файла: {file_size:.1f} КБ\n"
         f"📁 Файл: `{REPORTS_FILE}`"
     )
@@ -204,6 +316,8 @@ def main():
     app.add_handler(CommandHandler("reports", reports_command))
     app.add_handler(CommandHandler("stats", stats_command))
     app.add_handler(CommandHandler("clear", clear_reports))
+    app.add_handler(CommandHandler("sendfile", send_file_command))  # НОВОЕ: отправка TXT файла
+    app.add_handler(CommandHandler("newversion", new_version))      # НОВОЕ: оповещение о новой версии
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     logger.info("✅ Бот запущен и готов к работе!")
