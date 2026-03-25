@@ -316,31 +316,63 @@ async def new_version(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ Оповещение завершено! Успешно: {success}")
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Статистика + диагностика Google Sheets"""
     user = update.effective_user
     if user.id != YOUR_CHAT_ID:
+        await update.message.reply_text("⛔ Нет прав.")
         return
     
-    # Считаем из Google Sheets
-    users = get_all_users_from_sheets()
-    users_count = len(users)
+    # Диагностика Google Sheets
+    gs_status = "❌ НЕ ПОДКЛЮЧЁН"
+    gs_error = ""
     
-    # Считаем отчёты
+    if sheet_conn:
+        gs_status = "✅ ПОДКЛЮЧЁН"
+    else:
+        gs_error = "\n\n⚠️ Google Sheets не подключён. Проверьте:\n• credentials.json\n• Имя таблицы\n• Доступ к таблице"
+    
+    # Проверка секретного файла
+    secret_path = "/etc/secrets/credentials.json"
+    file_exists = os.path.exists(secret_path)
+    file_size = os.path.getsize(secret_path) if file_exists else 0
+    
+    # Статистика из Google Sheets
+    users_count = 0
     reports_count = 0
-    if reports_worksheet:
+    
+    if sheet_conn and users_worksheet and reports_worksheet:
         try:
+            users_data = users_worksheet.get_all_values()
+            users_count = len(users_data) - 1 if len(users_data) > 1 else 0
+            
             reports_data = reports_worksheet.get_all_values()
             reports_count = len(reports_data) - 1 if len(reports_data) > 1 else 0
-        except:
-            pass
+        except Exception as e:
+            gs_error = f"\n\n⚠️ Ошибка чтения таблицы: {e}"
+    else:
+        # Если Google Sheets не подключён, показываем локальную статистику
+        if os.path.exists(REPORTS_FILE):
+            with open(REPORTS_FILE, "r", encoding="utf-8") as f:
+                reports_count = f.read().count("[20")
+        
+        if os.path.exists(USERS_FILE):
+            with open(USERS_FILE, "r", encoding="utf-8") as f:
+                users_count = len([line for line in f if line.strip()])
     
-    await update.message.reply_text(
-        f"📊 **Статистика:**\n\n"
+    # Формируем сообщение
+    message = (
+        f"📊 **Статистика**\n\n"
         f"👥 Пользователей: {users_count}\n"
-        f"📝 Отчётов: {reports_count}\n"
-        f"📁 Данные хранятся в Google Sheets",
-        parse_mode='Markdown'
+        f"📝 Отчётов: {reports_count}\n\n"
+        f"🔌 **Google Sheets:** {gs_status}\n"
+        f"📁 Файл credentials.json: {'✅ найден' if file_exists else '❌ НЕ НАЙДЕН'}\n"
+        f"📄 Размер JSON: {file_size} байт"
     )
-
+    
+    if gs_error:
+        message += gs_error
+    
+    await update.message.reply_text(message, parse_mode='Markdown')
 async def reports_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показывает ссылку на Google Sheets"""
     user = update.effective_user
