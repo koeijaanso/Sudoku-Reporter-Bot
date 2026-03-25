@@ -471,6 +471,7 @@ def main():
     # Запускаем Flask в фоне
     threading.Thread(target=run_flask, daemon=True).start()
     
+    # Создаём приложение
     app = Application.builder().token(BOT_TOKEN).build()
     
     # Добавляем обработчики
@@ -481,12 +482,22 @@ def main():
     app.add_handler(CommandHandler("sendfile", send_file_command))
     app.add_handler(CommandHandler("newversion", new_version))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.add_handler(CommandHandler("checksheets", check_sheets))
     
     app.post_init = post_init
     
     logger.info("🔄 Бот запускается...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+    
+    # Запускаем инициализацию
+    import asyncio
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(initialize_bot(app))
+    
+    # Запускаем polling
+    app.run_polling(
+        allowed_updates=Update.ALL_TYPES,
+        drop_pending_updates=True
+    )
 
 if __name__ == "__main__":
     import asyncio
