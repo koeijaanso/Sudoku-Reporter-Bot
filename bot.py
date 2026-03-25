@@ -392,7 +392,35 @@ def health_check():
 
 def run_flask():
     flask_app.run(host='0.0.0.0', port=10000)
-
+    
+async def check_sheets(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Проверка подключения к Google Sheets"""
+    user = update.effective_user
+    if user.id != YOUR_CHAT_ID:
+        return
+    
+    # Проверяем существование файла
+    secret_path = "/etc/secrets/credentials.json"
+    file_exists = os.path.exists(secret_path)
+    
+    message = f"🔍 **Диагностика Google Sheets**\n\n"
+    message += f"📁 Файл {secret_path}: {'✅ найден' if file_exists else '❌ НЕ НАЙДЕН'}\n"
+    
+    if file_exists:
+        with open(secret_path, 'r') as f:
+            content = f.read()
+            message += f"📄 Размер JSON: {len(content)} символов\n"
+            message += f"🔑 Содержит private_key: {'✅' if 'private_key' in content else '❌'}\n"
+    
+    message += f"\n📊 Таблица: `{SHEET_NAME}`\n"
+    message += f"👤 Ваш ID: `{user.id}`\n"
+    
+    if sheet_conn:
+        message += f"\n✅ Google Sheets подключён!"
+    else:
+        message += f"\n❌ Google Sheets НЕ подключён"
+    
+    await update.message.reply_text(message, parse_mode='Markdown')
 # ========== ЗАПУСК ==========
 def main():
     if BOT_TOKEN == "1234567890:ABCdefGHIjklMNOpqrsTUVwxyz":
@@ -412,6 +440,7 @@ def main():
     app.add_handler(CommandHandler("sendfile", send_file_command))
     app.add_handler(CommandHandler("newversion", new_version))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(CommandHandler("checksheets", check_sheets))
     
     app.post_init = post_init
     
