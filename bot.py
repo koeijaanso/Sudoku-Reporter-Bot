@@ -25,7 +25,7 @@ BOT_TOKEN = "8651698350:AAFxhxzlMoiXA1v2k1ym-pLI2uFM7bOdjQM"
 YOUR_CHAT_ID = 837102027 
 
 # Google Sheets настройки
-SHEET_NAME = "Sudoku Bot Data"  # Имя вашей таблицы
+SHEET_NAME = "SudokuBotData"  # Имя вашей таблицы
 # ================================
 
 # Инициализация Google Sheets из секретного файла на Render
@@ -453,6 +453,15 @@ async def check_sheets(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message += f"\n❌ Google Sheets НЕ подключён"
     
     await update.message.reply_text(message, parse_mode='Markdown')
+async def initialize_bot(app: Application):
+    """Инициализация бота с очисткой конфликтов"""
+    try:
+        # Удаляем вебхук и все старые обновления
+        await app.bot.delete_webhook(drop_pending_updates=True)
+        logger.info("✅ Вебхук удалён")
+        await asyncio.sleep(2)
+    except Exception as e:
+        logger.error(f"Ошибка при удалении вебхука: {e}")
 # ========== ЗАПУСК ==========
 def main():
     if BOT_TOKEN == "1234567890:ABCdefGHIjklMNOpqrsTUVwxyz":
