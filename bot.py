@@ -271,6 +271,21 @@ def main():
         drop_pending_updates=True  # Это помогает избежать Conflict
     )
 
+from flask import Flask
+import threading
+
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+def health_check():
+    return "✅ Bot is running", 200
+
+def run_flask():
+    flask_app.run(host='0.0.0.0', port=10000)
+
+# Запускаем Flask в отдельном потоке
+threading.Thread(target=run_flask, daemon=True).start()
+
 if __name__ == "__main__":
     # Добавляем задержку и запускаем
     import asyncio
